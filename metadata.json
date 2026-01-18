@@ -1,0 +1,5 @@
+{
+  "name": "TiDB HTAP Vision",
+  "description": "A sophisticated dashboard showcasing TiDB's Hybrid Transactional/Analytical Processing (HTAP) capabilities, featuring real-time performance monitoring and deep business analytics powered by Gemini AI.",
+  "requestFramePermissions": []
+}
