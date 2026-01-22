@@ -29,12 +29,15 @@ import {
   CheckCircle2,
   AlertCircle,
   Wifi,
-  WifiOff
+  WifiOff,
+  Info,
+  Key,
+  Globe
 } from 'lucide-react';
 import { DashboardView, MetricPoint, BusinessData, HTAPStatus, AIInsight, QueryResult, TiDBConfig } from './types';
 import { generateRealtimePerformance, generateBusinessData, getHTAPStatus, runQuery as runMockQuery } from './services/tidbSimulator';
 import { getAIInsights } from './services/geminiService';
-import { executeLiveQuery } from './services/tidbApiService';
+import { executeLiveQuery, testConnection } from './services/tidbApiService';
 
 const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#22c55e'];
 
@@ -56,6 +59,8 @@ const App: React.FC = () => {
     port: 4000,
     user: 'root'
   });
+
+  const [testStatus, setTestStatus] = useState<{ loading: boolean; success?: boolean; message?: string }>({ loading: false });
 
   // SQL Lab State
   const [sql, setSql] = useState<string>("SELECT category, SUM(amount) as total_sales \nFROM orders \nGROUP BY category \nORDER BY total_sales DESC;");
@@ -85,6 +90,16 @@ const App: React.FC = () => {
       });
     }
     setExecuting(false);
+  };
+
+  const handleTestConnection = async () => {
+    setTestStatus({ loading: true });
+    const result = await testConnection(config);
+    setTestStatus({ loading: false, success: result.success, message: result.message });
+    if (result.success) {
+      setConfig(prev => ({ ...prev, isLive: true }));
+      setSql("SHOW TABLES;"); // Suggest exploration
+    }
   };
 
   const fetchAIInsights = async () => {
@@ -308,7 +323,13 @@ const App: React.FC = () => {
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-red-500/5">
                   <AlertCircle className="w-12 h-12 mb-4 text-red-500" />
                   <h4 className="text-lg font-bold text-slate-100 mb-2">Query Execution Error</h4>
-                  <p className="text-sm text-slate-400 max-w-md font-mono">{queryResult.error}</p>
+                  <p className="text-sm text-slate-400 max-w-md font-mono mb-4">{queryResult.error}</p>
+                  <button 
+                    onClick={() => setActiveView(DashboardView.SETTINGS)}
+                    className="text-xs text-indigo-400 hover:underline flex items-center gap-1"
+                  >
+                    Check Connection Settings <ExternalLink className="w-3 h-3" />
+                  </button>
                 </div>
               ) : !queryResult && !executing ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 p-8 text-center">
@@ -353,7 +374,6 @@ const App: React.FC = () => {
     </div>
   );
 
-  // Added renderAnalyticsView to fix the missing function error
   const renderAnalyticsView = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="glass-panel rounded-2xl p-6">
@@ -448,8 +468,8 @@ const App: React.FC = () => {
   );
 
   const renderSettingsView = () => (
-    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="glass-panel rounded-2xl p-8">
+    <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="glass-panel rounded-2xl p-8 h-fit">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-3">
@@ -464,84 +484,123 @@ const App: React.FC = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="flex items-center gap-4 p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20 mb-6">
-            <AlertCircle className="w-10 h-10 text-indigo-400 shrink-0" />
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Standard browsers cannot directly connect to TiDB's MySQL protocol (Port 4000). 
-              To use live data, please configure a <strong>TiDB Cloud Data Service</strong> endpoint 
-              or a local proxy that supports HTTPS.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
              <div className="space-y-2">
-               <label className="text-xs font-bold text-slate-500 uppercase">Endpoint URL</label>
+               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                 <Globe className="w-3 h-3" /> Endpoint URL
+               </label>
                <input 
                  type="text" 
                  placeholder="https://gateway.tidbcloud.com/..." 
-                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
+                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none transition-colors"
                  value={config.endpoint}
                  onChange={(e) => setConfig({...config, endpoint: e.target.value})}
                />
              </div>
              <div className="space-y-2">
-               <label className="text-xs font-bold text-slate-500 uppercase">Public Key</label>
+               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                 <Key className="w-3 h-3" /> Public Key
+               </label>
                <input 
                  type="text" 
-                 placeholder="TiDB Cloud Public Key"
-                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
+                 placeholder="Enter Public Key"
+                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none transition-colors"
                  value={config.publicKey}
                  onChange={(e) => setConfig({...config, publicKey: e.target.value})}
                />
              </div>
              <div className="space-y-2">
-               <label className="text-xs font-bold text-slate-500 uppercase">Private Key</label>
+               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                 <Key className="w-3 h-3" /> Private Key
+               </label>
                <input 
                  type="password" 
-                 placeholder="TiDB Cloud Private Key"
-                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none"
+                 placeholder="Enter Private Key"
+                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none transition-colors"
                  value={config.privateKey}
                  onChange={(e) => setConfig({...config, privateKey: e.target.value})}
                />
              </div>
-             <div className="space-y-2 flex flex-col justify-end">
-               <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors">
-                  <input 
-                    type="checkbox" 
-                    checked={config.isLive}
-                    onChange={(e) => setConfig({...config, isLive: e.target.checked})}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700"
-                  />
-                  <span className="text-sm font-medium text-slate-200">Enable Live Mode</span>
-               </label>
-             </div>
+          </div>
+
+          <div className="flex flex-col gap-4 pt-4">
+            <button 
+              onClick={handleTestConnection}
+              disabled={testStatus.loading || !config.endpoint}
+              className={`w-full font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                testStatus.loading ? 'bg-slate-700 text-slate-400' : 
+                testStatus.success ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 
+                'bg-slate-700 hover:bg-slate-600 text-white'
+              }`}
+            >
+              {testStatus.loading ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              {testStatus.success ? 'Connection Verified!' : 'Test Connection'}
+            </button>
+
+            {testStatus.message && (
+              <div className={`p-4 rounded-xl text-xs flex gap-3 ${testStatus.success ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                {testStatus.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                <p className="flex-1">{testStatus.message}</p>
+              </div>
+            )}
           </div>
 
           <div className="pt-6 border-t border-slate-800">
-            <h3 className="text-sm font-bold text-slate-300 mb-4">CLI / Local Info (Read Only)</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Host</label>
-                <input readOnly value={config.host} className="w-full bg-slate-900/50 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-500" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Port</label>
-                <input readOnly value={config.port} className="w-full bg-slate-900/50 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-500" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">User</label>
-                <input readOnly value={config.user} className="w-full bg-slate-900/50 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-500" />
-              </div>
-            </div>
+             <label className="flex items-center gap-3 cursor-pointer p-4 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition-colors border border-slate-700">
+                <input 
+                  type="checkbox" 
+                  checked={config.isLive}
+                  disabled={!testStatus.success && config.isLive === false}
+                  onChange={(e) => setConfig({...config, isLive: e.target.checked})}
+                  className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700"
+                />
+                <div className="flex-1">
+                  <span className="text-sm font-bold text-slate-100 block">Enable Live HTAP Mode</span>
+                  <span className="text-xs text-slate-500">Route SQL Lab queries to the actual cluster.</span>
+                </div>
+             </label>
+             {!testStatus.success && (
+               <p className="text-[10px] text-orange-400/70 mt-2 px-2 italic">Verify connection before enabling live mode.</p>
+             )}
           </div>
         </div>
       </div>
-      <button 
-        onClick={() => setActiveView(DashboardView.SQL_LAB)}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1"
-      >
-        Go to SQL Lab
-      </button>
+
+      <div className="flex flex-col gap-6">
+        <div className="glass-panel rounded-2xl p-8 border border-indigo-500/20 bg-indigo-500/5">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-indigo-400">
+            <Info className="w-5 h-5" /> How to connect
+          </h3>
+          <ul className="space-y-4 text-sm text-slate-300">
+            <li className="flex gap-3">
+              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
+              <p>Sign in to <a href="https://tidbcloud.com" target="_blank" className="text-indigo-400 hover:underline">TiDB Cloud</a> and select your cluster.</p>
+            </li>
+            <li className="flex gap-3">
+              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
+              <p>Navigate to <strong>Data Service</strong> in the sidebar.</p>
+            </li>
+            <li className="flex gap-3">
+              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
+              <p>Create an <strong>App</strong> and a <strong>Data App Key</strong> to get your API keys.</p>
+            </li>
+            <li className="flex gap-3">
+              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0">4</span>
+              <p>Copy the <strong>HTTPS Endpoint</strong> from the Data Service dashboard.</p>
+            </li>
+          </ul>
+          <div className="mt-6 p-4 bg-slate-900/50 rounded-xl border border-slate-700 text-xs text-slate-400 leading-relaxed italic">
+            "Direct MySQL protocol (Port 4000) connections from browsers are blocked by security policies. We use TiDB's Data Service API as a secure gateway."
+          </div>
+        </div>
+
+        <button 
+          onClick={() => setActiveView(DashboardView.SQL_LAB)}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-600/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-3"
+        >
+          <Terminal className="w-5 h-5" /> Launch SQL Lab
+        </button>
+      </div>
     </div>
   );
 
@@ -566,7 +625,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="hidden md:flex items-center gap-4">
-          <div className={`h-10 px-4 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center gap-2 ${config.isLive ? 'border-emerald-500/50' : ''}`}>
+          <div className={`h-10 px-4 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center gap-2 ${config.isLive ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/10' : ''}`}>
             {config.isLive ? <Wifi className="w-4 h-4 text-emerald-400" /> : <WifiOff className="w-4 h-4 text-slate-500" />}
             <span className={`text-[10px] font-bold uppercase tracking-wider ${config.isLive ? 'text-emerald-400' : 'text-slate-500'}`}>
               {config.isLive ? 'Live Cluster' : 'Simulated'}
@@ -580,11 +639,6 @@ const App: React.FC = () => {
         {activeView === DashboardView.SQL_LAB && renderSqlLab()}
         {activeView === DashboardView.ANALYTICS && renderAnalyticsView()}
         {activeView === DashboardView.SETTINGS && renderSettingsView()}
-        {activeView === DashboardView.SUPERSET && (
-          <div className="h-full flex items-center justify-center text-slate-500">
-            Redirecting to Superset view... (Configure in Settings)
-          </div>
-        )}
       </main>
 
       <footer className="p-8 text-center text-slate-500 text-sm border-t border-slate-800 glass-panel mt-auto">

@@ -13,8 +13,6 @@ export const executeLiveQuery = async (config: TiDBConfig, sql: string): Promise
   const startTime = performance.now();
   
   try {
-    // Note: In a production environment, you would call your own backend 
-    // to sign these requests or use the TiDB Cloud SDK.
     const response = await fetch(config.endpoint, {
       method: 'POST',
       headers: {
@@ -33,11 +31,9 @@ export const executeLiveQuery = async (config: TiDBConfig, sql: string): Promise
     const endTime = performance.now();
 
     // Data Service usually returns results in a specific format
-    // We map it to our internal QueryResult format
-    const columns = data.result.columns.map((c: any) => c.name);
-    const rows = data.result.rows;
+    const columns = data.result?.columns?.map((c: any) => c.name) || [];
+    const rows = data.result?.rows || [];
 
-    // Detect engine via EXPLAIN if possible, or heuristic
     const isAnalytical = sql.toUpperCase().includes('GROUP BY') || sql.toUpperCase().includes('JOIN');
 
     return {
@@ -59,4 +55,15 @@ export const executeLiveQuery = async (config: TiDBConfig, sql: string): Promise
       error: error.message
     };
   }
+};
+
+/**
+ * Lightweight verification call
+ */
+export const testConnection = async (config: TiDBConfig): Promise<{ success: boolean; message: string }> => {
+  const result = await executeLiveQuery(config, "SELECT 1 as ping");
+  if (result.error) {
+    return { success: false, message: result.error };
+  }
+  return { success: true, message: "Connection established successfully!" };
 };
